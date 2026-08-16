@@ -12,6 +12,7 @@ import {
   preferredRegistrationInsurerId,
   registrationInsurersForPayment,
   registrationOptionLabel,
+  registrationPaymentMethodsForEncounter,
   registrationPatientSearchQuery,
   triageCategoryLabel,
   validateRegistrationNewPatient,
@@ -44,6 +45,13 @@ function registrationDraft(overrides: Partial<RegistrationDraft> = {}): Registra
     shift: '1',
     complaint: '  Demam tiga hari  ',
     notes: '  ',
+    entry_procedure: '1',
+    referrer_id: null,
+    diagnosis_id: 101,
+    case_id: 18,
+    social_status: '2',
+    disability: '',
+    bed_id: null,
     is_control: true,
     triage: '3',
     arrival_method: '1',
@@ -134,6 +142,7 @@ describe('registration form helpers', () => {
 
   it('uses schema labels and preserves an unknown legacy code', () => {
     expect(registrationOptionLabel([{ value: '01', label: 'Orang tua' }], '01')).toBe('Orang tua')
+    expect(registrationOptionLabel([{ value: '2', label: 'Cukup' }], 2)).toBe('Cukup')
     expect(registrationOptionLabel([], 'legacy-code')).toBe('legacy-code')
     expect(registrationOptionLabel([], null)).toBe('—')
   })
@@ -166,6 +175,22 @@ describe('registration form helpers', () => {
     expect(preferredRegistrationInsurerId(insurers, '02', 'Z-0007', 'Z-0007')).toBe('BPJS')
   })
 
+  it('filters payment methods according to the selected encounter', () => {
+    const methods = [
+      { code: '01', name: 'Umum' },
+      { code: '02', name: 'BPJS' },
+      { code: '03', name: 'Kerja sama' },
+    ]
+
+    expect(registrationPaymentMethodsForEncounter(methods, {
+      outpatient: ['01', '02'],
+      emergency: ['01', '03'],
+    }, 'emergency')).toEqual([
+      { code: '01', name: 'Umum' },
+      { code: '03', name: 'Kerja sama' },
+    ])
+  })
+
   it('builds a normalized outpatient payload without leaking emergency fields', () => {
     const payload = buildRegistrationPayload(registrationDraft())
 
@@ -175,6 +200,13 @@ describe('registration form helpers', () => {
     expect(payload.complaint).toBe('Demam tiga hari')
     expect(payload.notes).toBeUndefined()
     expect(payload.responsible_name).toBe('Budi')
+    expect(payload.entry_procedure).toBe('1')
+    expect(payload.referrer_id).toBeUndefined()
+    expect(payload.diagnosis_id).toBe(101)
+    expect(payload.case_id).toBe(18)
+    expect(payload.social_status).toBe(2)
+    expect(payload.disability).toBeUndefined()
+    expect(payload.bed_id).toBeUndefined()
     expect(payload.is_control).toBe(true)
     expect(payload.triage).toBeUndefined()
     expect(payload.arrival_method).toBeUndefined()
@@ -195,6 +227,46 @@ describe('registration form helpers', () => {
     expect(payload.arrival_method).toBe('1')
     expect(payload.accident_location).toBe('Jalan utama')
     expect(payload.is_visum).toBe(true)
+  })
+
+  it('keeps referral data and strips inpatient-only fields from laboratory registration', () => {
+    const payload = buildRegistrationPayload(registrationDraft({
+      encounter_type: 'laboratory',
+      entry_procedure: '5',
+      referrer_id: 22,
+      bed_id: 301,
+      triage: '3',
+      arrival_method: '1',
+      is_visum: true,
+    }))
+
+    expect(payload.entry_procedure).toBe('5')
+    expect(payload.referrer_id).toBe(22)
+    expect(payload.bed_id).toBeUndefined()
+    expect(payload.triage).toBeUndefined()
+    expect(payload.arrival_method).toBeUndefined()
+    expect(payload.is_visum).toBe(false)
+  })
+
+  it('includes the selected bed only for inpatient admission', () => {
+    const payload = buildRegistrationPayload(registrationDraft({
+      encounter_type: 'inpatient',
+      bed_id: 301,
+      disability: '4',
+    }))
+
+    expect(payload.bed_id).toBe(301)
+    expect(payload.disability).toBe(4)
+    expect(payload.is_control).toBe(false)
+  })
+
+  it('drops a stale referrer when the patient comes independently', () => {
+    const payload = buildRegistrationPayload(registrationDraft({
+      entry_procedure: '1',
+      referrer_id: 22,
+    }))
+
+    expect(payload.referrer_id).toBeUndefined()
   })
 
   it('builds a normalized new-patient payload without patient_id', () => {

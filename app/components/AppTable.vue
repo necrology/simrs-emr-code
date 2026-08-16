@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { PaginationMeta } from '~/types/api'
 
+defineOptions({ name: 'AppTable' })
+
 export interface TableColumn { key: string; label: string; sortable?: boolean }
 
 const props = withDefaults(defineProps<{

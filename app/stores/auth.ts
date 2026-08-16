@@ -30,6 +30,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = response.data.user
       initialized.value = true
       useEmrModulesStore().reset()
+      useSimrsModulesStore().reset()
     } catch (error) {
       throw new Error(errorMessage(error), { cause: error })
     } finally {
@@ -44,6 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null
       initialized.value = true
       useEmrModulesStore().reset()
+      useSimrsModulesStore().reset()
       await navigateTo('/login')
     }
   }

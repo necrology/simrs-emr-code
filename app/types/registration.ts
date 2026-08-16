@@ -1,6 +1,6 @@
 import type { RegistrationSummary } from '~/types/patient'
 
-export type RegistrationEncounterType = 'outpatient' | 'emergency'
+export type RegistrationEncounterType = 'outpatient' | 'emergency' | 'laboratory' | 'radiology' | 'inpatient'
 export type RegistrationShift = '1' | '2'
 export type RegistrationPatientMode = 'existing' | 'new'
 export type RegistrationPatientSex = 'L' | 'P'
@@ -45,12 +45,18 @@ export interface RegistrationOption {
   label: string
 }
 
+export interface RegistrationCaseOption extends RegistrationOption {
+  code: string
+}
+
 export interface RegistrationDefaults {
   registered_at: string
   encounter_type: RegistrationEncounterType
   payment_method_code: string
   insurer_id: string
   shift: RegistrationShift
+  entry_procedure: string
+  case_id: number
 }
 
 export interface RegistrationSchema {
@@ -60,8 +66,13 @@ export interface RegistrationSchema {
   clinics: RegistrationClinic[]
   payment_methods: RegistrationPaymentMethod[]
   insurers: RegistrationInsurer[]
+  encounter_payment_methods: Record<RegistrationEncounterType, string[]>
   triage_categories: RegistrationOption[]
   arrival_methods: RegistrationOption[]
+  entry_procedures: RegistrationOption[]
+  cases: RegistrationCaseOption[]
+  social_statuses: RegistrationOption[]
+  disabilities: RegistrationOption[]
   responsible_relations: RegistrationOption[]
   defaults: RegistrationDefaults
   warnings?: string[]
@@ -72,6 +83,29 @@ export interface RegistrationDoctor {
   name: string
   schedule_days: string[] | null
   schedule_time: string | null
+}
+
+export interface RegistrationDiagnosis {
+  id: number
+  code: string
+  name: string
+}
+
+export interface RegistrationReferrer {
+  id: number
+  code: string | null
+  name: string
+  address: string | null
+}
+
+export interface RegistrationBed {
+  id: number
+  clinic_id: number
+  code: string | null
+  name: string
+  class_id: number | null
+  class_name: string | null
+  room_rate: number | null
 }
 
 export interface RegistrationNewPatientDraft {
@@ -115,6 +149,13 @@ export interface RegistrationDraft {
   shift: RegistrationShift
   complaint: string
   notes: string
+  entry_procedure: string
+  referrer_id: number | null
+  diagnosis_id: number | null
+  case_id: number | null
+  social_status: string
+  disability: string
+  bed_id: number | null
   is_control: boolean
   triage: string
   arrival_method: string
@@ -139,6 +180,13 @@ interface RegistrationCreatePayloadBase {
   shift: RegistrationShift
   complaint?: string
   notes?: string
+  entry_procedure: string
+  referrer_id?: number
+  diagnosis_id?: number
+  case_id: number
+  social_status?: number
+  disability?: number
+  bed_id?: number
   is_control: boolean
   triage?: string
   arrival_method?: string

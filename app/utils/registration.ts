@@ -1,10 +1,12 @@
 import type {
   RegistrationCreatePayload,
   RegistrationDraft,
+  RegistrationEncounterType,
   RegistrationInsurer,
   RegistrationNewPatientDraft,
   RegistrationNewPatientPayload,
   RegistrationOption,
+  RegistrationPaymentMethod,
 } from '~/types/registration'
 
 export const REGISTRATION_PATIENT_SEARCH_PER_PAGE = 10
@@ -29,6 +31,30 @@ const ARRIVAL_METHODS: RegistrationOption[] = [
   { value: '2', label: 'Kiriman dokter' },
   { value: '3', label: 'Rujukan klinik' },
   { value: '4', label: 'Petugas kesehatan lain' },
+]
+
+const ENTRY_PROCEDURES: RegistrationOption[] = [
+  { value: '1', label: 'Datang sendiri' },
+  { value: '4', label: 'Rujukan luar' },
+  { value: '5', label: 'Rujukan Puskesmas' },
+  { value: '6', label: 'Rujukan Rumah Sakit' },
+  { value: '7', label: 'Rujukan Klinik' },
+  { value: '8', label: 'Rujukan dokter/dokter gigi/spesialis' },
+  { value: '9', label: 'Fasilitas kesehatan lain' },
+]
+
+const SOCIAL_STATUSES: RegistrationOption[] = [
+  { value: '1', label: 'Baik' },
+  { value: '2', label: 'Cukup' },
+  { value: '3', label: 'Kurang' },
+]
+
+const DISABILITIES: RegistrationOption[] = [
+  { value: '1', label: 'Tuna Rungu' },
+  { value: '2', label: 'Tuna Netra' },
+  { value: '3', label: 'Tuna Wicara' },
+  { value: '4', label: 'Tuna Daksa' },
+  { value: '5', label: 'Tuna Grahita' },
 ]
 
 export function registrationPatientSearchQuery(search: string): RegistrationPatientSearchQuery {
@@ -68,9 +94,24 @@ export function preferredRegistrationInsurerId(
   return defaultInsurer?.id ?? available[0]?.id ?? ''
 }
 
+export function registrationPaymentMethodsForEncounter(
+  paymentMethods: RegistrationPaymentMethod[],
+  encounterPaymentMethods: Partial<Record<RegistrationEncounterType, string[]>>,
+  encounterType: RegistrationEncounterType,
+): RegistrationPaymentMethod[] {
+  const allowedCodes = encounterPaymentMethods[encounterType] ?? []
+  return paymentMethods.filter(method => allowedCodes.includes(method.code))
+}
+
 function optionalText(value: string): string | undefined {
   const normalized = value.trim()
   return normalized || undefined
+}
+
+function optionalInteger(value: string): number | undefined {
+  if (!value) return undefined
+  const normalized = Number(value)
+  return Number.isInteger(normalized) && normalized > 0 ? normalized : undefined
 }
 
 function addValidationError(errors: Record<string, string[]>, field: string, message: string): void {
@@ -171,6 +212,9 @@ export function buildRegistrationPayload(form: RegistrationDraft): RegistrationC
   if (form.patient_mode === 'existing' && form.patient_id === null) {
     throw new Error('Pasien lama wajib dipilih sebelum membentuk payload registrasi.')
   }
+  if (form.case_id === null) {
+    throw new Error('Jenis kasus wajib dipilih sebelum membentuk payload registrasi.')
+  }
 
   const commonPayload = {
     idempotency_key: form.idempotency_key,
@@ -184,6 +228,13 @@ export function buildRegistrationPayload(form: RegistrationDraft): RegistrationC
     shift: form.shift,
     complaint: optionalText(form.complaint),
     notes: optionalText(form.notes),
+    entry_procedure: form.entry_procedure,
+    referrer_id: form.entry_procedure === '1' ? undefined : (form.referrer_id ?? undefined),
+    diagnosis_id: form.diagnosis_id ?? undefined,
+    case_id: form.case_id,
+    social_status: optionalInteger(form.social_status),
+    disability: optionalInteger(form.disability),
+    bed_id: form.encounter_type === 'inpatient' ? (form.bed_id ?? undefined) : undefined,
     is_control: form.patient_mode === 'existing' && form.encounter_type === 'outpatient' && form.is_control,
     triage: form.encounter_type === 'emergency' ? optionalText(form.triage) : undefined,
     arrival_method: form.encounter_type === 'emergency' ? optionalText(form.arrival_method) : undefined,
@@ -213,11 +264,12 @@ export function buildRegistrationPayload(form: RegistrationDraft): RegistrationC
 
 export function registrationOptionLabel(
   options: RegistrationOption[],
-  value: string | null | undefined,
+  value: string | number | null | undefined,
   emptyLabel = '—',
 ): string {
-  if (!value) return emptyLabel
-  return options.find(option => option.value === value)?.label ?? value
+  if (value === null || value === undefined || value === '') return emptyLabel
+  const normalized = String(value)
+  return options.find(option => option.value === normalized)?.label ?? normalized
 }
 
 export function triageCategoryLabel(value: string | null | undefined): string {
@@ -226,4 +278,16 @@ export function triageCategoryLabel(value: string | null | undefined): string {
 
 export function arrivalMethodLabel(value: string | null | undefined): string {
   return registrationOptionLabel(ARRIVAL_METHODS, value)
+}
+
+export function entryProcedureLabel(value: string | null | undefined): string {
+  return registrationOptionLabel(ENTRY_PROCEDURES, value)
+}
+
+export function socialStatusLabel(value: string | number | null | undefined): string {
+  return registrationOptionLabel(SOCIAL_STATUSES, value)
+}
+
+export function disabilityLabel(value: string | number | null | undefined): string {
+  return registrationOptionLabel(DISABILITIES, value)
 }

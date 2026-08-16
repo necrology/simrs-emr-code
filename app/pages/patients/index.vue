@@ -43,7 +43,7 @@ onMounted(load)
   <div class="page-header"><div><h1 class="page-title">Master pasien</h1><p class="page-description">Pencarian server-side pada sumber utama rekam medis.</p></div></div>
   <section class="panel">
     <form class="filters" @submit.prevent="page = 1; load()"><input v-model.trim="search" class="input" style="min-width:280px" placeholder="No. RM, NIK, atau nama"><input v-model="birthDate" class="input" type="date"><button class="button button-primary" type="submit">Cari</button><button class="button" type="button" @click="search = ''; birthDate = ''; page = 1; load()">Reset</button></form>
-    <EnterpriseTable :columns="columns" :rows="tableRows" :meta="meta" :loading="loading" :error="error" :row-link="patientLink" @page="changePage" @sort="changeSort" />
+    <AppTable :columns="columns" :rows="tableRows" :meta="meta" :loading="loading" :error="error" :row-link="patientLink" @page="changePage" @sort="changeSort" />
   </section>
   </div>
 </template>

@@ -1,17 +1,23 @@
 <script setup lang="ts">
 import type { PatientSummary } from '~/types/patient'
 import type {
+  RegistrationBed,
   RegistrationClinic,
+  RegistrationDiagnosis,
   RegistrationDoctor,
   RegistrationDraft,
   RegistrationDuplicateCandidate,
+  RegistrationReferrer,
   RegistrationSchema,
 } from '~/types/registration'
 import { errorMessage } from '~/services/api'
 import { getPatient, getPatients } from '~/services/patients'
 import {
   createRegistration,
+  getRegistrationBeds,
+  getRegistrationDiagnoses,
   getRegistrationDoctors,
+  getRegistrationReferrers,
   getRegistrationSchema,
   registrationFailure,
 } from '~/services/registrations'
@@ -22,6 +28,7 @@ import {
   preferredRegistrationInsurerId,
   registrationInsurersForPayment,
   registrationOptionLabel,
+  registrationPaymentMethodsForEncounter,
   registrationPatientSearchQuery,
   validateRegistrationNewPatient,
 } from '~/utils/registration'
@@ -34,8 +41,14 @@ const steps = [
 ]
 
 const stepFields: Record<number, string[]> = {
-  1: ['encounter_type', 'registered_at', 'clinic_id', 'doctor_id', 'shift'],
-  2: ['payment_method_code', 'insurer_id', 'insurer_number'],
+  1: [
+    'encounter_type', 'registered_at', 'clinic_id', 'doctor_id', 'shift', 'complaint',
+    'entry_procedure', 'diagnosis_id', 'case_id', 'social_status', 'disability',
+  ],
+  2: [
+    'payment_method_code', 'insurer_id', 'insurer_number', 'notes', 'responsible_name',
+    'responsible_national_id', 'responsible_address', 'responsible_phone', 'responsible_relation',
+  ],
 }
 
 const existingPatientStepFields = ['patient_mode', 'patient_id']
@@ -74,6 +87,13 @@ const fieldSteps: Record<string, number> = {
   doctor_id: 1,
   shift: 1,
   complaint: 1,
+  entry_procedure: 1,
+  referrer_id: 1,
+  diagnosis_id: 1,
+  case_id: 1,
+  social_status: 1,
+  disability: 1,
+  bed_id: 1,
   is_control: 1,
   triage: 1,
   arrival_method: 1,
@@ -111,6 +131,13 @@ const fieldElementIds: Record<string, string> = {
   doctor_id: 'doctor-id',
   shift: 'shift',
   complaint: 'complaint',
+  entry_procedure: 'entry-procedure',
+  referrer_id: 'referrer-id',
+  diagnosis_id: 'diagnosis-id',
+  case_id: 'case-id',
+  social_status: 'social-status',
+  disability: 'disability',
+  bed_id: 'bed-id',
   is_control: 'is-control',
   triage: 'triage',
   arrival_method: 'arrival-method',
@@ -156,6 +183,27 @@ const doctorsLoading = ref(false)
 const doctorsError = ref('')
 let doctorRequestSequence = 0
 
+const diagnoses = ref<RegistrationDiagnosis[]>([])
+const diagnosisSearch = ref('')
+const selectedDiagnosis = ref<RegistrationDiagnosis | null>(null)
+const diagnosesLoading = ref(false)
+const diagnosesError = ref('')
+const hasDiagnosisSearched = ref(false)
+let diagnosisRequestSequence = 0
+
+const referrers = ref<RegistrationReferrer[]>([])
+const referrerSearch = ref('')
+const selectedReferrer = ref<RegistrationReferrer | null>(null)
+const referrersLoading = ref(false)
+const referrersError = ref('')
+const hasReferrerSearched = ref(false)
+let referrerRequestSequence = 0
+
+const beds = ref<RegistrationBed[]>([])
+const bedsLoading = ref(false)
+const bedsError = ref('')
+let bedRequestSequence = 0
+
 const clientErrors = ref<Record<string, string[]>>({})
 const fieldErrors = ref<Record<string, string[]>>({})
 const submitError = ref('')
@@ -187,6 +235,13 @@ const form = reactive<RegistrationDraft>({
   shift: '1',
   complaint: '',
   notes: '',
+  entry_procedure: '1',
+  referrer_id: null,
+  diagnosis_id: null,
+  case_id: null,
+  social_status: '',
+  disability: '',
+  bed_id: null,
   is_control: false,
   triage: '',
   arrival_method: '',
@@ -235,8 +290,34 @@ const selectedDoctor = computed(() => {
   return doctors.value.find(doctor => doctor.id === form.doctor_id) ?? null
 })
 
+const selectedBed = computed(() => {
+  return beds.value.find(bed => bed.id === form.bed_id) ?? null
+})
+
+const diagnosisOptions = computed(() => {
+  if (!selectedDiagnosis.value || diagnoses.value.some(item => item.id === selectedDiagnosis.value?.id)) {
+    return diagnoses.value
+  }
+  return [selectedDiagnosis.value, ...diagnoses.value]
+})
+
+const referrerOptions = computed(() => {
+  if (!selectedReferrer.value || referrers.value.some(item => item.id === selectedReferrer.value?.id)) {
+    return referrers.value
+  }
+  return [selectedReferrer.value, ...referrers.value]
+})
+
+const filteredPaymentMethods = computed(() => {
+  return registrationPaymentMethodsForEncounter(
+    schema.value?.payment_methods ?? [],
+    schema.value?.encounter_payment_methods ?? {},
+    form.encounter_type,
+  )
+})
+
 const selectedPaymentMethod = computed(() => {
-  return schema.value?.payment_methods.find(method => method.code === form.payment_method_code) ?? null
+  return filteredPaymentMethods.value.find(method => method.code === form.payment_method_code) ?? null
 })
 
 const filteredInsurers = computed(() => {
@@ -255,6 +336,22 @@ const selectedTriageLabel = computed(() => {
 
 const selectedArrivalMethodLabel = computed(() => {
   return registrationOptionLabel(schema.value?.arrival_methods ?? [], form.arrival_method)
+})
+
+const selectedEntryProcedureLabel = computed(() => {
+  return registrationOptionLabel(schema.value?.entry_procedures ?? [], form.entry_procedure)
+})
+
+const selectedCaseLabel = computed(() => {
+  return registrationOptionLabel(schema.value?.cases ?? [], form.case_id === null ? '' : String(form.case_id))
+})
+
+const selectedSocialStatusLabel = computed(() => {
+  return registrationOptionLabel(schema.value?.social_statuses ?? [], form.social_status)
+})
+
+const selectedDisabilityLabel = computed(() => {
+  return registrationOptionLabel(schema.value?.disabilities ?? [], form.disability)
 })
 
 const selectedResponsibleRelationLabel = computed(() => {
@@ -310,8 +407,12 @@ function fieldsForStep(step: number): string[] {
   if (step === 0) {
     return form.patient_mode === 'new' ? newPatientStepFields : existingPatientStepFields
   }
-  if (step === 1 && form.encounter_type === 'emergency') {
-    return [...(stepFields[step] ?? []), 'triage', 'arrival_method']
+  if (step === 1) {
+    const fields = [...(stepFields[step] ?? [])]
+    if (form.entry_procedure !== '1') fields.push('referrer_id')
+    if (form.encounter_type === 'emergency') fields.push('triage', 'arrival_method')
+    if (form.encounter_type === 'inpatient') fields.push('bed_id')
+    return fields
   }
   return stepFields[step] ?? []
 }
@@ -366,9 +467,20 @@ async function loadSchema(): Promise<void> {
     form.encounter_type = loaded.encounter_types.some(item => item.value === loaded.defaults.encounter_type)
       ? loaded.defaults.encounter_type
       : (loaded.encounter_types[0]?.value ?? 'outpatient')
-    form.payment_method_code = loaded.payment_methods.some(item => item.code === loaded.defaults.payment_method_code)
+    form.entry_procedure = loaded.entry_procedures.some(item => item.value === loaded.defaults.entry_procedure)
+      ? loaded.defaults.entry_procedure
+      : (loaded.entry_procedures[0]?.value ?? '1')
+    form.case_id = loaded.cases.some(item => Number(item.value) === loaded.defaults.case_id)
+      ? loaded.defaults.case_id
+      : (loaded.cases[0] ? Number(loaded.cases[0].value) : null)
+    const allowedPaymentMethods = registrationPaymentMethodsForEncounter(
+      loaded.payment_methods,
+      loaded.encounter_payment_methods,
+      form.encounter_type,
+    )
+    form.payment_method_code = allowedPaymentMethods.some(item => item.code === loaded.defaults.payment_method_code)
       ? loaded.defaults.payment_method_code
-      : (loaded.payment_methods[0]?.code ?? '')
+      : (allowedPaymentMethods[0]?.code ?? '')
     form.insurer_id = loaded.defaults.insurer_id
     form.shift = loaded.defaults.shift === '2' ? '2' : '1'
     normalizeInsurerForPayment()
@@ -525,6 +637,14 @@ function validateStep(step: number): boolean {
     }
     if (!form.doctor_id) setClientError('doctor_id', 'Pilih dokter.')
     if (form.shift !== '1' && form.shift !== '2') setClientError('shift', 'Pilih shift registrasi.')
+    if (!form.entry_procedure) setClientError('entry_procedure', 'Pilih prosedur masuk pasien.')
+    if (form.entry_procedure !== '1' && !form.referrer_id) {
+      setClientError('referrer_id', 'Pilih fasilitas atau tenaga perujuk.')
+    }
+    if (!form.case_id) setClientError('case_id', 'Pilih jenis kasus.')
+    if (form.encounter_type === 'inpatient' && !form.bed_id) {
+      setClientError('bed_id', 'Pilih tempat tidur yang tersedia.')
+    }
     if (form.encounter_type === 'emergency') {
       if (!form.triage) setClientError('triage', 'Pilih kategori triage IGD.')
       if (!form.arrival_method) setClientError('arrival_method', 'Pilih cara datang pasien IGD.')
@@ -532,7 +652,9 @@ function validateStep(step: number): boolean {
   }
 
   if (step === 2) {
-    if (!form.payment_method_code) setClientError('payment_method_code', 'Pilih cara pembayaran.')
+    if (!form.payment_method_code || !filteredPaymentMethods.value.some(method => method.code === form.payment_method_code)) {
+      setClientError('payment_method_code', 'Pilih cara pembayaran yang tersedia untuk layanan ini.')
+    }
     if (!form.insurer_id) setClientError('insurer_id', 'Pilih penjamin.')
     if (selectedInsurer.value?.requires_number && !form.insurer_number.trim()) {
       setClientError('insurer_number', 'Nomor kepesertaan wajib diisi untuk penjamin ini.')
@@ -574,6 +696,17 @@ function onEncounterTypeChange(): void {
   clearFieldError('arrival_method')
   clearFieldError('accident_location')
   clearFieldError('is_visum')
+  clearFieldError('bed_id')
+  form.is_control = false
+  form.triage = ''
+  form.arrival_method = ''
+  form.accident_location = ''
+  form.is_visum = false
+  form.bed_id = null
+  beds.value = []
+  bedsError.value = ''
+  bedsLoading.value = false
+  bedRequestSequence += 1
   if (selectedClinic.value?.encounter_type !== form.encounter_type) {
     form.clinic_id = null
     form.doctor_id = ''
@@ -582,6 +715,7 @@ function onEncounterTypeChange(): void {
     clearFieldError('clinic_id')
     clearFieldError('doctor_id')
   }
+  normalizePaymentMethodForEncounter()
 }
 
 async function loadDoctors(): Promise<void> {
@@ -619,10 +753,19 @@ async function loadDoctors(): Promise<void> {
 
 function onClinicChange(): void {
   form.doctor_id = ''
+  form.bed_id = null
   doctorSearch.value = ''
   clearFieldError('clinic_id')
   clearFieldError('doctor_id')
+  clearFieldError('bed_id')
   void loadDoctors()
+  if (form.encounter_type === 'inpatient') void loadBeds()
+  else {
+    bedRequestSequence += 1
+    beds.value = []
+    bedsError.value = ''
+    bedsLoading.value = false
+  }
 }
 
 function searchDoctors(): void {
@@ -642,9 +785,166 @@ function onDoctorSearchInput(): void {
     : ''
 }
 
+async function loadDiagnoses(): Promise<void> {
+  const search = diagnosisSearch.value.trim()
+  const sequence = ++diagnosisRequestSequence
+  diagnosesError.value = ''
+
+  if (search.length < 2) {
+    diagnoses.value = []
+    diagnosesLoading.value = false
+    hasDiagnosisSearched.value = false
+    diagnosesError.value = 'Ketik minimal 2 karakter kode atau nama diagnosa.'
+    return
+  }
+
+  hasDiagnosisSearched.value = true
+  diagnosesLoading.value = true
+  try {
+    const response = await getRegistrationDiagnoses({ search, limit: 20 })
+    if (sequence === diagnosisRequestSequence && search === diagnosisSearch.value.trim()) {
+      diagnoses.value = response.data
+    }
+  } catch (cause) {
+    if (sequence === diagnosisRequestSequence) diagnosesError.value = registrationFailure(cause).message
+  } finally {
+    if (sequence === diagnosisRequestSequence) diagnosesLoading.value = false
+  }
+}
+
+function searchDiagnoses(): void {
+  void loadDiagnoses()
+}
+
+function onDiagnosisSearchInput(): void {
+  diagnosisRequestSequence += 1
+  diagnosesLoading.value = false
+  hasDiagnosisSearched.value = false
+  diagnosesError.value = diagnosisSearch.value.trim().length === 1
+    ? 'Ketik minimal 2 karakter kode atau nama diagnosa.'
+    : ''
+}
+
+function onDiagnosisChange(): void {
+  selectedDiagnosis.value = diagnosisOptions.value.find(item => item.id === form.diagnosis_id) ?? null
+  clearFieldError('diagnosis_id')
+}
+
+async function loadReferrers(): Promise<void> {
+  const search = referrerSearch.value.trim()
+  const sequence = ++referrerRequestSequence
+  referrersError.value = ''
+
+  if (search.length < 2) {
+    referrers.value = []
+    referrersLoading.value = false
+    hasReferrerSearched.value = false
+    referrersError.value = 'Ketik minimal 2 karakter nama, kode, atau alamat perujuk.'
+    return
+  }
+
+  hasReferrerSearched.value = true
+  referrersLoading.value = true
+  try {
+    const response = await getRegistrationReferrers({ search, limit: 20 })
+    if (sequence === referrerRequestSequence && search === referrerSearch.value.trim()) {
+      referrers.value = response.data
+    }
+  } catch (cause) {
+    if (sequence === referrerRequestSequence) referrersError.value = registrationFailure(cause).message
+  } finally {
+    if (sequence === referrerRequestSequence) referrersLoading.value = false
+  }
+}
+
+function searchReferrers(): void {
+  void loadReferrers()
+}
+
+function onReferrerSearchInput(): void {
+  referrerRequestSequence += 1
+  referrersLoading.value = false
+  hasReferrerSearched.value = false
+  referrersError.value = referrerSearch.value.trim().length === 1
+    ? 'Ketik minimal 2 karakter nama, kode, atau alamat perujuk.'
+    : ''
+}
+
+function onReferrerChange(): void {
+  selectedReferrer.value = referrerOptions.value.find(item => item.id === form.referrer_id) ?? null
+  clearFieldError('referrer_id')
+}
+
+function onEntryProcedureChange(): void {
+  clearFieldError('entry_procedure')
+  if (form.entry_procedure === '1') {
+    referrerRequestSequence += 1
+    form.referrer_id = null
+    selectedReferrer.value = null
+    referrerSearch.value = ''
+    referrers.value = []
+    referrersError.value = ''
+    referrersLoading.value = false
+    hasReferrerSearched.value = false
+    clearFieldError('referrer_id')
+  }
+}
+
+async function loadBeds(): Promise<void> {
+  const clinicId = form.clinic_id
+  const sequence = ++bedRequestSequence
+  bedsError.value = ''
+
+  if (form.encounter_type !== 'inpatient' || !clinicId) {
+    beds.value = []
+    bedsLoading.value = false
+    return
+  }
+
+  bedsLoading.value = true
+  try {
+    const response = await getRegistrationBeds({ clinic_id: clinicId })
+    if (sequence === bedRequestSequence && clinicId === form.clinic_id && form.encounter_type === 'inpatient') {
+      beds.value = response.data
+      if (!beds.value.some(bed => bed.id === form.bed_id)) form.bed_id = null
+    }
+  } catch (cause) {
+    if (sequence === bedRequestSequence) bedsError.value = registrationFailure(cause).message
+  } finally {
+    if (sequence === bedRequestSequence) bedsLoading.value = false
+  }
+}
+
+function formatCurrency(value: number | null): string {
+  if (value === null) return 'Tarif belum tersedia'
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function bedOptionLabel(bed: RegistrationBed): string {
+  const identity = [bed.code, bed.name].filter(Boolean).join(' — ')
+  return [identity, bed.class_name, formatCurrency(bed.room_rate)].filter(Boolean).join(' · ')
+}
+
 function onPaymentMethodChange(): void {
   clearFieldError('payment_method_code')
   normalizeInsurerForPayment()
+  clearFieldError('insurer_id')
+  clearFieldError('insurer_number')
+}
+
+function normalizePaymentMethodForEncounter(): void {
+  const methods = filteredPaymentMethods.value
+  if (!methods.some(method => method.code === form.payment_method_code)) {
+    form.payment_method_code = methods.some(method => method.code === schema.value?.defaults.payment_method_code)
+      ? (schema.value?.defaults.payment_method_code ?? '')
+      : (methods[0]?.code ?? '')
+  }
+  normalizeInsurerForPayment()
+  clearFieldError('payment_method_code')
   clearFieldError('insurer_id')
   clearFieldError('insurer_number')
 }
@@ -729,6 +1029,9 @@ onMounted(() => { void loadSchema() })
 onBeforeUnmount(() => {
   patientRequestSequence += 1
   doctorRequestSequence += 1
+  diagnosisRequestSequence += 1
+  referrerRequestSequence += 1
+  bedRequestSequence += 1
   duplicateCandidateRequestSequence += 1
 })
 </script>
@@ -742,7 +1045,7 @@ onBeforeUnmount(() => {
     <div class="page-header">
       <div>
         <h1 class="page-title">Registrasi baru</h1>
-        <p class="page-description">Buat pasien baru bila diperlukan, lalu daftarkan encounter rawat jalan atau gawat darurat.</p>
+        <p class="page-description">Daftarkan Rawat Jalan, IGD, Laboratorium, Radiologi, atau admisi Rawat Inap sesuai master SIMRS.</p>
       </div>
       <NuxtLink class="button" to="/registrations">Kembali ke daftar</NuxtLink>
     </div>
@@ -1272,6 +1575,206 @@ onBeforeUnmount(() => {
               </label>
             </div>
 
+            <div class="form-subsection">
+              <h3>Detail registrasi SIMRS</h3>
+              <div class="form-grid">
+                <label class="field" for="entry-procedure">
+                  <span>Prosedur masuk <span class="required-mark" aria-label="wajib">*</span></span>
+                  <select
+                    id="entry-procedure"
+                    v-model="form.entry_procedure"
+                    class="select"
+                    name="entry_procedure"
+                    required
+                    :aria-invalid="hasFieldError('entry_procedure')"
+                    :aria-describedby="hasFieldError('entry_procedure') ? 'entry-procedure-error' : undefined"
+                    @change="onEntryProcedureChange"
+                  >
+                    <option value="" disabled>Pilih prosedur masuk</option>
+                    <option v-for="option in schema.entry_procedures" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  </select>
+                  <span v-if="hasFieldError('entry_procedure')" id="entry-procedure-error" class="field-description" role="alert">
+                    <span v-for="message in fieldErrorMessages('entry_procedure')" :key="message" class="field-error">{{ message }}</span>
+                  </span>
+                </label>
+
+                <label class="field" for="case-id">
+                  <span>Jenis kasus <span class="required-mark" aria-label="wajib">*</span></span>
+                  <select
+                    id="case-id"
+                    v-model="form.case_id"
+                    class="select"
+                    name="case_id"
+                    required
+                    :aria-invalid="hasFieldError('case_id')"
+                    :aria-describedby="hasFieldError('case_id') ? 'case-id-error' : undefined"
+                    @change="clearFieldError('case_id')"
+                  >
+                    <option :value="null" disabled>Pilih jenis kasus</option>
+                    <option v-for="option in schema.cases" :key="option.value" :value="Number(option.value)">
+                      {{ option.code }} — {{ option.label }}
+                    </option>
+                  </select>
+                  <span v-if="hasFieldError('case_id')" id="case-id-error" class="field-description" role="alert">
+                    <span v-for="message in fieldErrorMessages('case_id')" :key="message" class="field-error">{{ message }}</span>
+                  </span>
+                </label>
+
+                <div v-if="form.entry_procedure !== '1'" class="field field-wide">
+                  <label for="referrer-id">Perujuk <span class="required-mark" aria-label="wajib">*</span></label>
+                  <div class="reference-lookup">
+                    <div class="reference-search-control">
+                      <input
+                        id="referrer-search"
+                        v-model.trim="referrerSearch"
+                        class="input"
+                        type="search"
+                        placeholder="Cari nama, kode, atau alamat perujuk"
+                        :disabled="referrersLoading"
+                        @input="onReferrerSearchInput"
+                      >
+                      <button
+                        class="button"
+                        type="button"
+                        :disabled="referrersLoading || referrerSearch.trim().length < 2"
+                        @click="searchReferrers"
+                      >
+                        {{ referrersLoading ? 'Mencari…' : 'Cari perujuk' }}
+                      </button>
+                    </div>
+                    <select
+                      id="referrer-id"
+                      v-model="form.referrer_id"
+                      class="select"
+                      name="referrer_id"
+                      required
+                      :aria-invalid="hasFieldError('referrer_id')"
+                      :aria-describedby="hasFieldError('referrer_id') ? 'referrer-id-error' : 'referrer-status'"
+                      @change="onReferrerChange"
+                    >
+                      <option :value="null" disabled>Pilih perujuk dari hasil pencarian</option>
+                      <option v-for="referrer in referrerOptions" :key="referrer.id" :value="referrer.id">
+                        {{ referrer.code ? referrer.code + ' — ' : '' }}{{ referrer.name }}{{ referrer.address ? ' · ' + referrer.address : '' }}
+                      </option>
+                    </select>
+                  </div>
+                  <span id="referrer-status" class="field-description" :class="{ 'field-error': referrersError }" aria-live="polite">
+                    {{ referrersError || (hasReferrerSearched && !referrersLoading && referrers.length === 0 ? 'Perujuk tidak ditemukan.' : 'Ketik minimal 2 karakter lalu cari perujuk.') }}
+                  </span>
+                  <span v-if="hasFieldError('referrer_id')" id="referrer-id-error" class="field-description" role="alert">
+                    <span v-for="message in fieldErrorMessages('referrer_id')" :key="message" class="field-error">{{ message }}</span>
+                  </span>
+                </div>
+
+                <div class="field field-wide">
+                  <label for="diagnosis-id">Diagnosa awal <span class="optional-mark">Opsional</span></label>
+                  <div class="reference-lookup">
+                    <div class="reference-search-control">
+                      <input
+                        id="diagnosis-search"
+                        v-model.trim="diagnosisSearch"
+                        class="input"
+                        type="search"
+                        placeholder="Cari kode ICD atau nama diagnosa"
+                        :disabled="diagnosesLoading"
+                        @input="onDiagnosisSearchInput"
+                      >
+                      <button
+                        class="button"
+                        type="button"
+                        :disabled="diagnosesLoading || diagnosisSearch.trim().length < 2"
+                        @click="searchDiagnoses"
+                      >
+                        {{ diagnosesLoading ? 'Mencari…' : 'Cari diagnosa' }}
+                      </button>
+                    </div>
+                    <select
+                      id="diagnosis-id"
+                      v-model="form.diagnosis_id"
+                      class="select"
+                      name="diagnosis_id"
+                      :aria-invalid="hasFieldError('diagnosis_id')"
+                      :aria-describedby="hasFieldError('diagnosis_id') ? 'diagnosis-id-error' : 'diagnosis-status'"
+                      @change="onDiagnosisChange"
+                    >
+                      <option :value="null">Belum ditentukan</option>
+                      <option v-for="diagnosis in diagnosisOptions" :key="diagnosis.id" :value="diagnosis.id">
+                        {{ diagnosis.code }} — {{ diagnosis.name }}
+                      </option>
+                    </select>
+                  </div>
+                  <span id="diagnosis-status" class="field-description" :class="{ 'field-error': diagnosesError }" aria-live="polite">
+                    {{ diagnosesError || (hasDiagnosisSearched && !diagnosesLoading && diagnoses.length === 0 ? 'Diagnosa tidak ditemukan.' : 'Ketik minimal 2 karakter untuk mencari master ICD.') }}
+                  </span>
+                  <span v-if="hasFieldError('diagnosis_id')" id="diagnosis-id-error" class="field-description" role="alert">
+                    <span v-for="message in fieldErrorMessages('diagnosis_id')" :key="message" class="field-error">{{ message }}</span>
+                  </span>
+                </div>
+
+                <label class="field" for="social-status">
+                  <span>Status sosial ekonomi <span class="optional-mark">Opsional</span></span>
+                  <select
+                    id="social-status"
+                    v-model="form.social_status"
+                    class="select"
+                    name="social_status"
+                    @change="clearFieldError('social_status')"
+                  >
+                    <option value="">Belum ditentukan</option>
+                    <option v-for="option in schema.social_statuses" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  </select>
+                  <span v-if="hasFieldError('social_status')" class="field-description" role="alert">
+                    <span v-for="message in fieldErrorMessages('social_status')" :key="message" class="field-error">{{ message }}</span>
+                  </span>
+                </label>
+
+                <label class="field" for="disability">
+                  <span>Disabilitas <span class="optional-mark">Opsional</span></span>
+                  <select
+                    id="disability"
+                    v-model="form.disability"
+                    class="select"
+                    name="disability"
+                    @change="clearFieldError('disability')"
+                  >
+                    <option value="">Tidak dicatat</option>
+                    <option v-for="option in schema.disabilities" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  </select>
+                  <span v-if="hasFieldError('disability')" class="field-description" role="alert">
+                    <span v-for="message in fieldErrorMessages('disability')" :key="message" class="field-error">{{ message }}</span>
+                  </span>
+                </label>
+
+                <div v-if="form.encounter_type === 'inpatient'" class="field field-wide">
+                  <label for="bed-id">Tempat tidur <span class="required-mark" aria-label="wajib">*</span></label>
+                  <div class="bed-control">
+                    <select
+                      id="bed-id"
+                      v-model="form.bed_id"
+                      class="select"
+                      name="bed_id"
+                      required
+                      :disabled="!form.clinic_id || bedsLoading"
+                      :aria-busy="bedsLoading"
+                      :aria-invalid="hasFieldError('bed_id')"
+                      :aria-describedby="hasFieldError('bed_id') ? 'bed-id-error' : 'bed-status'"
+                      @change="clearFieldError('bed_id')"
+                    >
+                      <option :value="null" disabled>{{ bedsLoading ? 'Memuat tempat tidur…' : 'Pilih tempat tidur tersedia' }}</option>
+                      <option v-for="bed in beds" :key="bed.id" :value="bed.id">{{ bedOptionLabel(bed) }}</option>
+                    </select>
+                    <button class="button" type="button" :disabled="!form.clinic_id || bedsLoading" @click="loadBeds">Muat ulang</button>
+                  </div>
+                  <span id="bed-status" class="field-description" :class="{ 'field-error': bedsError }" aria-live="polite">
+                    {{ bedsError || (!bedsLoading && form.clinic_id && beds.length === 0 ? 'Tidak ada tempat tidur tersedia pada unit ini.' : 'Bed akan dikunci secara atomik saat registrasi disimpan.') }}
+                  </span>
+                  <span v-if="hasFieldError('bed_id')" id="bed-id-error" class="field-description" role="alert">
+                    <span v-for="message in fieldErrorMessages('bed_id')" :key="message" class="field-error">{{ message }}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div v-if="form.encounter_type === 'outpatient'" class="form-subsection">
               <h3>Detail rawat jalan</h3>
               <p v-if="form.patient_mode === 'new'" class="field-description">Pasien baru otomatis dicatat sebagai kunjungan baru dan tidak dapat ditandai sebagai pasien kontrol.</p>
@@ -1281,7 +1784,7 @@ onBeforeUnmount(() => {
               </label>
             </div>
 
-            <div v-else class="form-subsection">
+            <div v-else-if="form.encounter_type === 'emergency'" class="form-subsection">
               <h3>Detail gawat darurat</h3>
               <div class="form-grid">
                 <label class="field" for="triage">
@@ -1367,7 +1870,7 @@ onBeforeUnmount(() => {
                   @change="onPaymentMethodChange"
                 >
                   <option value="" disabled>Pilih cara pembayaran</option>
-                  <option v-for="method in schema.payment_methods" :key="method.code" :value="method.code">{{ method.name }}</option>
+                  <option v-for="method in filteredPaymentMethods" :key="method.code" :value="method.code">{{ method.name }}</option>
                 </select>
                 <span v-if="hasFieldError('payment_method_code')" id="payment-method-error" class="field-description" role="alert">
                   <span v-for="message in fieldErrorMessages('payment_method_code')" :key="message" class="field-error">{{ message }}</span>
@@ -1571,10 +2074,22 @@ onBeforeUnmount(() => {
                 <dt>Jadwal</dt><dd>{{ selectedDoctor ? doctorSchedule(selectedDoctor) || '—' : '—' }}</dd>
                 <dt>Shift</dt><dd>Shift {{ form.shift }}</dd>
                 <dt>Keluhan</dt><dd>{{ form.complaint || '—' }}</dd>
+                <dt>Prosedur masuk</dt><dd>{{ selectedEntryProcedureLabel }}</dd>
+                <template v-if="form.entry_procedure !== '1'">
+                  <dt>Perujuk</dt><dd>{{ selectedReferrer?.name ?? '—' }}</dd>
+                  <dt>Alamat perujuk</dt><dd>{{ selectedReferrer?.address ?? '—' }}</dd>
+                </template>
+                <dt>Diagnosa awal</dt><dd>{{ selectedDiagnosis ? selectedDiagnosis.code + ' — ' + selectedDiagnosis.name : '—' }}</dd>
+                <dt>Jenis kasus</dt><dd>{{ selectedCaseLabel }}</dd>
+                <dt>Status sosial</dt><dd>{{ selectedSocialStatusLabel }}</dd>
+                <dt>Disabilitas</dt><dd>{{ selectedDisabilityLabel }}</dd>
+                <template v-if="form.encounter_type === 'inpatient'">
+                  <dt>Tempat tidur</dt><dd>{{ selectedBed ? bedOptionLabel(selectedBed) : '—' }}</dd>
+                </template>
                 <template v-if="form.encounter_type === 'outpatient'">
                   <dt>Kunjungan kontrol</dt><dd>{{ form.is_control ? 'Ya' : 'Tidak' }}</dd>
                 </template>
-                <template v-else>
+                <template v-if="form.encounter_type === 'emergency'">
                   <dt>Triage</dt><dd>{{ selectedTriageLabel }}</dd>
                   <dt>Cara datang</dt><dd>{{ selectedArrivalMethodLabel }}</dd>
                   <dt>Lokasi kecelakaan</dt><dd>{{ form.accident_location || '—' }}</dd>
@@ -1639,8 +2154,8 @@ onBeforeUnmount(() => {
 .step-heading p { margin: 4px 0 0; color: var(--text-muted); }
 .patient-mode-fieldset { max-width: 760px; }
 .patient-search { max-width: 760px; }
-.patient-search-control, .doctor-search-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
-.patient-search .input, .doctor-search-control .input { width: 100%; }
+.patient-search-control, .doctor-search-control, .reference-search-control, .bed-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.patient-search .input, .doctor-search-control .input, .reference-search-control .input { width: 100%; }
 .field > small { color: var(--text-muted); font-size: 11px; }
 .compact-error { max-width: 760px; margin: 12px 0 0; }
 .lookup-state { margin-top: 14px; padding: 24px; border: 1px dashed #c9d3d6; border-radius: 5px; color: var(--text-muted); text-align: center; }
@@ -1677,7 +2192,7 @@ onBeforeUnmount(() => {
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .form-grid .field-wide { grid-column: 1 / -1; }
 .form-grid .input, .form-grid .select { width: 100%; }
-.doctor-lookup { display: grid; gap: 7px; }
+.doctor-lookup, .reference-lookup { display: grid; gap: 7px; }
 .form-subsection { margin-top: 20px; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: #fafbfb; }
 .form-subsection h3 { margin: 0 0 13px; font-size: 14px; }
 .form-subsection h3 span { margin-left: 5px; color: var(--text-muted); font-size: 11px; font-weight: 400; }
@@ -1708,7 +2223,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 520px) {
-  .patient-search-control, .doctor-search-control { grid-template-columns: 1fr; }
+  .patient-search-control, .doctor-search-control, .reference-search-control, .bed-control { grid-template-columns: 1fr; }
   .wizard-actions { flex-direction: column-reverse; }
   .wizard-actions .button { width: 100%; }
   .review-list { grid-template-columns: 1fr; }

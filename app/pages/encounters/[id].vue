@@ -5,7 +5,13 @@ import { encounterLabels } from '~/types/patient'
 import { areaForEncounterType } from '~/types/emr'
 import { errorMessage } from '~/services/api'
 import { formatDateTime } from '~/utils/format'
-import { arrivalMethodLabel, triageCategoryLabel } from '~/utils/registration'
+import {
+  arrivalMethodLabel,
+  disabilityLabel,
+  entryProcedureLabel,
+  socialStatusLabel,
+  triageCategoryLabel,
+} from '~/utils/registration'
 
 const route = useRoute()
 const record = ref<RegistrationSummary | null>(null)
@@ -22,6 +28,15 @@ const emrLink = computed(() => record.value && emrArea.value
     }
   : null)
 useHead({ title: 'Ringkasan Encounter' })
+
+function formatCurrency(value: number | null): string {
+  if (value === null) return '—'
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
 
 onMounted(async () => {
   try {
@@ -54,6 +69,7 @@ onMounted(async () => {
           <dt>Waktu registrasi</dt><dd>{{ formatDateTime(record.registered_at) }}</dd>
           <dt>Nomor antrean</dt><dd>{{ record.queue_label ?? record.queue_number ?? '—' }}</dd>
           <dt>ID layanan</dt><dd>{{ record.service_registration_id ?? '—' }}</dd>
+          <dt>Nomor dokumen layanan</dt><dd>{{ record.service_document_number ?? '—' }}</dd>
           <dt>Poli / unit</dt><dd>{{ record.clinic_name ?? record.clinic_id ?? '—' }}</dd>
           <dt>Ruangan</dt><dd>{{ record.room_name ?? '—' }}</dd>
           <dt>Dokter</dt><dd>{{ record.doctor_name ?? record.doctor_id ?? '—' }}</dd>
@@ -61,6 +77,13 @@ onMounted(async () => {
           <dt>Penjamin</dt><dd>{{ record.insurer_name ?? record.insurer_id ?? '—' }}</dd>
           <dt>Keluhan</dt><dd>{{ record.complaint ?? '—' }}</dd>
           <dt>Catatan</dt><dd>{{ record.notes ?? '—' }}</dd>
+          <dt>Prosedur masuk</dt><dd>{{ entryProcedureLabel(record.entry_procedure) }}</dd>
+          <dt>Perujuk</dt><dd>{{ record.referrer_name ?? record.referrer_code ?? '—' }}</dd>
+          <dt>Alamat perujuk</dt><dd>{{ record.referrer_address ?? '—' }}</dd>
+          <dt>Diagnosa awal</dt><dd>{{ record.diagnosis_code ? record.diagnosis_code + ' — ' + (record.diagnosis_name ?? '') : (record.diagnosis_name ?? '—') }}</dd>
+          <dt>Jenis kasus</dt><dd>{{ record.case_name ?? record.case_code ?? '—' }}</dd>
+          <dt>Status sosial</dt><dd>{{ socialStatusLabel(record.social_status) }}</dd>
+          <dt>Disabilitas</dt><dd>{{ disabilityLabel(record.disability) }}</dd>
           <template v-if="record.encounter_type === 'outpatient'">
             <dt>Kunjungan kontrol</dt><dd>{{ record.is_control ? 'Ya' : 'Tidak' }}</dd>
           </template>
@@ -69,6 +92,12 @@ onMounted(async () => {
             <dt>Cara datang</dt><dd>{{ arrivalMethodLabel(record.arrival_method) }}</dd>
             <dt>Lokasi kecelakaan</dt><dd>{{ record.accident_location ?? '—' }}</dd>
             <dt>Visum</dt><dd>{{ record.is_visum === '1' ? 'Ya' : (record.is_visum === '0' ? 'Tidak' : '—') }}</dd>
+          </template>
+          <template v-if="record.encounter_type === 'inpatient'">
+            <dt>ID riwayat kamar</dt><dd>{{ record.inpatient_room_id ?? '—' }}</dd>
+            <dt>Tempat tidur</dt><dd>{{ record.bed_code ? record.bed_code + ' — ' + (record.bed_name ?? '') : (record.bed_name ?? '—') }}</dd>
+            <dt>Kelas kamar</dt><dd>{{ record.room_class_name ?? record.room_class_id ?? '—' }}</dd>
+            <dt>Tarif kamar</dt><dd>{{ formatCurrency(record.room_rate) }}</dd>
           </template>
           <dt>Status periksa</dt><dd>{{ record.examination_status ?? '—' }}</dd>
           <dt>Status pulang</dt><dd>{{ record.discharge_status ?? '—' }}</dd>

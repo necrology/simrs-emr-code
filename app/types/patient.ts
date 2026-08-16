@@ -26,6 +26,7 @@ export interface RegistrationSummary {
   encounter_type: 'emergency' | 'outpatient' | 'laboratory' | 'radiology' | 'medical_checkup' | 'executive' | 'inpatient' | 'general' | 'unknown'
   encounter_type_code: string | null
   service_registration_id: number | null
+  service_document_number: string | null
   patient_id: number
   doctor_id: string | null
   doctor_name: string | null
@@ -39,6 +40,26 @@ export interface RegistrationSummary {
   insurer_name: string | null
   complaint: string | null
   notes: string | null
+  entry_procedure: string | null
+  referrer_id: number | null
+  referrer_code: string | null
+  referrer_name: string | null
+  referrer_address: string | null
+  diagnosis_id: number | null
+  diagnosis_code: string | null
+  diagnosis_name: string | null
+  case_id: number | null
+  case_code: string | null
+  case_name: string | null
+  social_status: string | number | null
+  disability: string | number | null
+  inpatient_room_id: number | null
+  bed_id: number | null
+  bed_code: string | null
+  bed_name: string | null
+  room_class_id: number | null
+  room_class_name: string | null
+  room_rate: number | null
   is_control: boolean
   triage: string | null
   arrival_method: string | null

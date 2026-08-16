@@ -31,14 +31,14 @@ export interface ModuleStatus {
 export interface EmrAreaDefinition {
   label: string
   legacyRoot: string
-  mark: string
+  icon: string
 }
 
 export const EMR_AREAS: Record<string, EmrAreaDefinition> = {
-  emergency: { label: 'EMR Rawat Darurat', legacyRoot: 'emr_rawatdarurat', mark: 'IG' },
-  outpatient: { label: 'EMR Rawat Jalan', legacyRoot: 'emr_rawatjalan', mark: 'RJ' },
-  inpatient: { label: 'EMR Rawat Inap', legacyRoot: 'emr_rawatinap', mark: 'RI' },
-  master_data: { label: 'EMR Master Data', legacyRoot: 'emr_masterdata', mark: 'MD' },
+  emergency: { label: 'EMR Rawat Darurat', legacyRoot: 'emr_rawatdarurat', icon: 'lucide:siren' },
+  outpatient: { label: 'EMR Rawat Jalan', legacyRoot: 'emr_rawatjalan', icon: 'lucide:stethoscope' },
+  inpatient: { label: 'EMR Rawat Inap', legacyRoot: 'emr_rawatinap', icon: 'lucide:bed' },
+  master_data: { label: 'EMR Master Data', legacyRoot: 'emr_masterdata', icon: 'lucide:database' },
 }
 
 export function areaForLegacyRoot(legacyPath: string): string | null {

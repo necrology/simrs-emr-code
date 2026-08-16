@@ -86,7 +86,7 @@ onMounted(() => { void load() })
     <div class="page-header">
       <div>
         <h1 class="page-title">Registrasi dan encounter</h1>
-        <p class="page-description">Daftar kunjungan rawat jalan, rawat inap, dan gawat darurat.</p>
+        <p class="page-description">Daftar registrasi Rawat Jalan, IGD, Laboratorium, Radiologi, dan Rawat Inap.</p>
       </div>
       <NuxtLink class="button button-primary" to="/registrations/new">Registrasi baru</NuxtLink>
     </div>
@@ -103,6 +103,9 @@ onMounted(() => { void load() })
             <option value="">Semua jenis</option>
             <option value="outpatient">Rawat Jalan</option>
             <option value="emergency">Gawat Darurat</option>
+            <option value="laboratory">Laboratorium</option>
+            <option value="radiology">Radiologi</option>
+            <option value="inpatient">Rawat Inap</option>
           </select>
         </label>
         <label class="field filter-field" for="registration-date-from">
@@ -118,7 +121,7 @@ onMounted(() => { void load() })
           <button class="button" type="button" @click="resetFilters">Reset</button>
         </div>
       </form>
-      <EnterpriseTable
+      <AppTable
         :columns="columns"
         :rows="tableRows"
         :meta="meta"

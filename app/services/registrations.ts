@@ -1,10 +1,13 @@
 import type { ApiEnvelope } from '~/types/api'
 import type {
+  RegistrationBed,
   RegistrationCreatePayload,
   RegistrationCreateResult,
+  RegistrationDiagnosis,
   RegistrationDoctor,
   RegistrationDuplicateCandidate,
   RegistrationFailure,
+  RegistrationReferrer,
   RegistrationSchema,
 } from '~/types/registration'
 import { apiRequest } from '~/services/api'
@@ -14,12 +17,33 @@ export interface RegistrationDoctorQuery {
   search?: string
 }
 
+export interface RegistrationReferenceQuery {
+  search: string
+  limit?: number
+}
+
+export interface RegistrationBedQuery {
+  clinic_id: number
+}
+
 export async function getRegistrationSchema(): Promise<ApiEnvelope<RegistrationSchema>> {
   return await apiRequest<RegistrationSchema>('/registrations/schema')
 }
 
 export async function getRegistrationDoctors(query: RegistrationDoctorQuery): Promise<ApiEnvelope<RegistrationDoctor[]>> {
   return await apiRequest<RegistrationDoctor[]>('/registrations/doctors', { query })
+}
+
+export async function getRegistrationDiagnoses(query: RegistrationReferenceQuery): Promise<ApiEnvelope<RegistrationDiagnosis[]>> {
+  return await apiRequest<RegistrationDiagnosis[]>('/registrations/diagnoses', { query })
+}
+
+export async function getRegistrationReferrers(query: RegistrationReferenceQuery): Promise<ApiEnvelope<RegistrationReferrer[]>> {
+  return await apiRequest<RegistrationReferrer[]>('/registrations/referrers', { query })
+}
+
+export async function getRegistrationBeds(query: RegistrationBedQuery): Promise<ApiEnvelope<RegistrationBed[]>> {
+  return await apiRequest<RegistrationBed[]>('/registrations/beds', { query })
 }
 
 export async function createRegistration(payload: RegistrationCreatePayload): Promise<ApiEnvelope<RegistrationCreateResult>> {

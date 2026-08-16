@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EmrFormLookup } from '../../app/types/emr-form'
-import { emrLookupPath, searchEmrLookup } from '../../app/services/emr-forms'
+import {
+  createEmrFormRecord,
+  emrLookupPath,
+  getEmrFormCatalog,
+  getEmrFormSchema,
+  searchEmrLookup,
+} from '../../app/services/emr-forms'
 
 const lookup: EmrFormLookup = {
   endpoint: '/api/v1/lookups/icd-10',
@@ -41,6 +47,32 @@ describe('EMR async lookup service', () => {
     expect(fetch).toHaveBeenCalledWith('/api/backend/v1/lookups/icd-10', {
       query: { search: 'kol', limit: 15 },
       signal: undefined,
+    })
+  })
+
+  it('routes form catalog, schema, and writes through the authenticated backend proxy', async () => {
+    const fetch = vi.fn().mockResolvedValue({ data: {} })
+    vi.stubGlobal('$fetch', fetch)
+
+    await getEmrFormCatalog({ module_id: 17 })
+    await getEmrFormSchema('outpatient-cppt')
+    await createEmrFormRecord('outpatient-cppt', {
+      encounter_id: 42,
+      patient_id: 9,
+      values: { subjective: 'Keluhan pasien' },
+    })
+
+    expect(fetch).toHaveBeenNthCalledWith(1, '/api/backend/v1/emr/forms', {
+      query: { module_id: 17 },
+    })
+    expect(fetch).toHaveBeenNthCalledWith(2, '/api/backend/v1/emr/forms/outpatient-cppt/schema', {})
+    expect(fetch).toHaveBeenNthCalledWith(3, '/api/backend/v1/emr/forms/outpatient-cppt/records', {
+      method: 'POST',
+      body: {
+        encounter_id: 42,
+        patient_id: 9,
+        values: { subjective: 'Keluhan pasien' },
+      },
     })
   })
 })
